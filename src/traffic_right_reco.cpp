@@ -206,8 +206,6 @@ void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<in
     cv::Mat bin_img_yellow = cv::Mat::zeros(blob_hsv.size(), CV_8UC1);
     binalizeImage(extract_yellow, bin_img_yellow);
 
-    // cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-
     cv::Mat labeled_yellow, stats_yellow, centroids_yellow;
     int num_labels_yellow = cv::connectedComponentsWithStats(bin_img_yellow, labeled_yellow, stats_yellow, centroids_yellow);
     for (int label = 1; label < num_labels_yellow; label++)
