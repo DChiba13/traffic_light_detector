@@ -40,7 +40,10 @@ bool green_light_flag = false;
 bool red_light_flag = false;
 
 // 画像の上から何％の高さを表示するのか設定　
-constexpr float IMAGE_ABOVE_RASIO = .33f;
+constexpr float IMG_TOP_EDGE_RASIO = .10f;
+constexpr float IMG_BOTTOM_EDGE_RATIO = .33f;
+constexpr float IMG_LEFT_EDGE_RATIO = .10f;
+constexpr float IMG_RIGHT_EDGE_RATIO = .90f;
 
 // IMAGE_THRESHフレーム連続で赤、青が認識されると信号とみなす
 constexpr int RED_IMAGE_THRESH = 0;
@@ -63,6 +66,8 @@ constexpr int MAX_PIX_NUM = 1000;
 double aspect_ratio = .0f;
 constexpr double MIN_ASPECT_RATIO = 0.8;
 constexpr double MAX_ASPECT_RATIO = 1.4;
+
+constexpr double YELLOW_PIX_TH = 8;
 
 /* ファイル名を取得 */
 void getFiles(const fs::path &path, const string &extension, vector<fs::path> &files)
@@ -157,10 +162,11 @@ void createCandidateArea(Mat &src, const Mat &labeled, const Mat &stats, const M
 
 /* ピンク色または水色の中に黄色が見えたら赤or青色の矩形でラベリングする関数 */
 /* isRedLightがtrueなら赤信号用の処理、falseなら青信号用の処理になる */
-void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<int> &widths, const vector<int> &heights, const vector<int> &lefts, const vector<int> &tops, bool isRedSignal, Mat &top_region)
+void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<int> &widths, const vector<int> &heights, const vector<int> &lefts, const vector<int> &tops, bool isRedSignal, Mat &top_region
+                      , int img_left, int img_top)
 {
-  Mat hsv;
-  cv::cvtColor(rgb, hsv, cv::COLOR_BGR2HSV);
+  Mat top_region_hsv;
+  cv::cvtColor(top_region, top_region_hsv, cv::COLOR_BGR2HSV);
   for (int label = 1; label < num_labels; label++)
   {
     int left = lefts[label];
@@ -181,12 +187,13 @@ void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<in
     }
 
     // 黄色画素抽出のループ
-    cv::Mat blob_rgb(rgb,cv::Rect(left, top, width, height));
-    cv::Mat blob_hsv(hsv, cv::Rect(left, top, width, height));
+    cv::Mat blob_rgb(top_region,cv::Rect(left, top, width, height));
+    cv::Mat blob_hsv(top_region_hsv, cv::Rect(left, top, width, height));
 
     cv::Mat extract_yellow = cv::Mat::zeros(blob_hsv.size(), blob_hsv.type());
     cv::medianBlur(blob_hsv, blob_hsv, 3);
     int yellow_pix_cnt = 0;
+
     for (int y = 0; y < blob_hsv.rows; y++)
     {
       for (int x = 0; x < blob_hsv.rows; x++)
@@ -201,7 +208,6 @@ void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<in
         }
       }
     }
-    // cv::imshow("yellow",extract_yellow);
 
     cv::Mat bin_img_yellow = cv::Mat::zeros(blob_hsv.size(), CV_8UC1);
     binalizeImage(extract_yellow, bin_img_yellow);
@@ -219,16 +225,16 @@ void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<in
       // cv::imshow("bin_img_yellow", bin_img_yellow);
       if (isRedSignal)
       {
-        if(num_labels_yellow > 1 && yellow_pix_cnt >= 8)
+        if(num_labels_yellow > 1 && yellow_pix_cnt >= YELLOW_PIX_TH)
         {
-          cv::rectangle(rgb, cv::Rect(left, top, width, height), cv::Scalar(0, 0, 255), 2); // 赤信号は赤い矩形
+          cv::rectangle(rgb, cv::Rect(left + img_left, top + img_top, width, height), cv::Scalar(0, 0, 255), 2); // 赤信号は赤い矩形
           cv::rectangle(top_region, cv::Rect(left, top, width, height), cv::Scalar(0, 0, 255), 2);
           red_light_flag = true;
         }
       }
       else
       {
-        if(num_labels_yellow > 1 && yellow_pix_cnt >= 8)
+        if(num_labels_yellow > 1 && yellow_pix_cnt >= YELLOW_PIX_TH)
         {
           cv::rectangle(rgb, cv::Rect(left, top, width, height), cv::Scalar(255, 0, 0), 2); // 青信号は青い矩形
           cv::rectangle(top_region, cv::Rect(left, top, width, height), cv::Scalar(255, 0, 0), 2);
@@ -293,11 +299,12 @@ int main(int argc, char **argv)
     }
     cout << "camera file : " << files_png[file_cnt].string() << endl;
 
-    int height = camera_img.rows;
-    int width = camera_img.cols;
-    int top_region_height = height * IMAGE_ABOVE_RASIO;
+    int img_left = camera_img.size().width * IMG_LEFT_EDGE_RATIO;
+    int img_top = camera_img.size().height * IMG_TOP_EDGE_RASIO;
+    int img_width = camera_img.size().width * (IMG_RIGHT_EDGE_RATIO - IMG_LEFT_EDGE_RATIO);
+    int img_height = camera_img.size().height * (IMG_BOTTOM_EDGE_RATIO - IMG_TOP_EDGE_RASIO);
 
-    cv::Mat top_region = camera_img(cv::Rect(0, 0, width, top_region_height));
+    cv::Mat top_region = camera_img(cv::Rect(img_left, img_top, img_width, img_height));
 
     cv::Mat hsv;
     cv::cvtColor(top_region, hsv, cv::COLOR_BGR2HSV);
@@ -347,8 +354,8 @@ int main(int argc, char **argv)
     createCandidateArea(top_region, labeled_green, stats_green, centroids_green, green_left, green_top, green_width, green_height, num_labels_green, color_type);
 
     // 信号の色判定
-    extractYellowInBlob(camera_img, red_dilate, num_labels_red, red_width, red_height, red_left, red_top, true, top_region);
-    extractYellowInBlob(camera_img, green_dilate, num_labels_green, green_width, green_height, green_left, green_top, false, top_region);
+    extractYellowInBlob(camera_img, red_dilate, num_labels_red, red_width, red_height, red_left, red_top, true, top_region, img_left, img_top);
+    extractYellowInBlob(camera_img, green_dilate, num_labels_green, green_width, green_height, green_left, green_top, false, top_region, img_left, img_top);
 
     // 赤、青信号が連続で検出されるほどcountが加算されていく
     // red_light_flag, greem_light_flagはextractYellowBlob関数から出力されている
