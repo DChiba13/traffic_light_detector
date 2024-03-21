@@ -236,7 +236,7 @@ void extractYellowInBlob(Mat &rgb, Mat &bin_img, int num_labels, const vector<in
       {
         if(num_labels_yellow > 1 && yellow_pix_cnt >= YELLOW_PIX_TH)
         {
-          cv::rectangle(rgb, cv::Rect(left, top, width, height), cv::Scalar(255, 0, 0), 2); // 青信号は青い矩形
+          cv::rectangle(rgb, cv::Rect(left + img_left, top + img_top, width, height), cv::Scalar(255, 0, 0), 2); // 青信号は青い矩形
           cv::rectangle(top_region, cv::Rect(left, top, width, height), cv::Scalar(255, 0, 0), 2);
           green_light_flag = true;
         }
@@ -384,6 +384,7 @@ int main(int argc, char **argv)
     green_light_flag = false;
 
     cv::imshow("Result", camera_img);
+    imshow("top_region", top_region);
 
     int key = cv::waitKey(0);
     if(key == ' ') break;
